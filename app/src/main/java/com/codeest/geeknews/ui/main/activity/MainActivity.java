@@ -1,6 +1,5 @@
 package com.codeest.geeknews.ui.main.activity;
 
-import android.Manifest;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
@@ -20,34 +19,29 @@ import com.codeest.geeknews.app.Constants;
 import com.codeest.geeknews.base.BaseActivity;
 import com.codeest.geeknews.component.RxBus;
 import com.codeest.geeknews.component.UpdateService;
-import com.codeest.geeknews.model.bean.SearchEvent;
-import com.codeest.geeknews.presenter.MainPresenter;
-import com.codeest.geeknews.presenter.contract.MainContract;
+import com.codeest.geeknews.model.event.SearchEvent;
+import com.codeest.geeknews.presenter.main.MainPresenter;
+import com.codeest.geeknews.base.contract.main.MainContract;
 import com.codeest.geeknews.ui.gank.fragment.GankMainFragment;
 import com.codeest.geeknews.ui.gold.fragment.GoldMainFragment;
 import com.codeest.geeknews.ui.main.fragment.AboutFragment;
 import com.codeest.geeknews.ui.main.fragment.LikeFragment;
 import com.codeest.geeknews.ui.main.fragment.SettingFragment;
+import com.codeest.geeknews.ui.vtex.fragment.VtexMainFragment;
 import com.codeest.geeknews.ui.wechat.fragment.WechatMainFragment;
 import com.codeest.geeknews.ui.zhihu.fragment.ZhihuMainFragment;
-import com.codeest.geeknews.util.SharedPreferenceUtil;
-import com.codeest.geeknews.util.SnackbarUtil;
 import com.codeest.geeknews.util.SystemUtil;
-import com.codeest.geeknews.util.ToastUtil;
 import com.miguelcatalan.materialsearchview.MaterialSearchView;
-
-import java.util.List;
+import com.tbruyelle.rxpermissions2.RxPermissions;
 
 import butterknife.BindView;
 import me.yokeyword.fragmentation.SupportFragment;
-import pub.devrel.easypermissions.AfterPermissionGranted;
-import pub.devrel.easypermissions.EasyPermissions;
 
 /**
  * Created by codeest on 16/8/9.
  */
 
-public class MainActivity extends BaseActivity<MainPresenter> implements MainContract.View, EasyPermissions.PermissionCallbacks{
+public class MainActivity extends BaseActivity<MainPresenter> implements MainContract.View{
 
     @BindView(R.id.drawer)
     DrawerLayout mDrawerLayout;
@@ -58,18 +52,18 @@ public class MainActivity extends BaseActivity<MainPresenter> implements MainCon
     @BindView(R.id.view_search)
     MaterialSearchView mSearchView;
 
-    ActionBarDrawerToggle mDrawerToggle;
     ZhihuMainFragment mZhihuFragment;
     GankMainFragment mGankFragment;
     WechatMainFragment mWechatFragment;
     GoldMainFragment mGoldFragment;
+    VtexMainFragment mVtexFragment;
     LikeFragment mLikeFragment;
     SettingFragment mSettingFragment;
     AboutFragment mAboutFragment;
+
     MenuItem mLastMenuItem;
     MenuItem mSearchMenuItem;
-
-    private static final int RC_WRITE = 100;
+    ActionBarDrawerToggle mDrawerToggle;
 
     private int hideFragment = Constants.TYPE_ZHIHU;
     private int showFragment = Constants.TYPE_ZHIHU;
@@ -92,9 +86,9 @@ public class MainActivity extends BaseActivity<MainPresenter> implements MainCon
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         if (savedInstanceState == null) {
-            SharedPreferenceUtil.setNightModeState(false);
+            mPresenter.setNightModeState(false);
         } else {
-            showFragment = SharedPreferenceUtil.getCurrentItem();
+            showFragment = mPresenter.getCurrentItem();
             hideFragment = Constants.TYPE_ZHIHU;
             showHideFragment(getTargetFragment(showFragment), getTargetFragment(hideFragment));
             mNavigationView.getMenu().findItem(R.id.drawer_zhihu).setChecked(false);
@@ -110,6 +104,7 @@ public class MainActivity extends BaseActivity<MainPresenter> implements MainCon
         mGankFragment = new GankMainFragment();
         mWechatFragment = new WechatMainFragment();
         mGoldFragment = new GoldMainFragment();
+        mVtexFragment = new VtexMainFragment();
         mLikeFragment = new LikeFragment();
         mSettingFragment = new SettingFragment();
         mAboutFragment = new AboutFragment();
@@ -117,7 +112,7 @@ public class MainActivity extends BaseActivity<MainPresenter> implements MainCon
         mDrawerToggle.syncState();
         mDrawerLayout.addDrawerListener(mDrawerToggle);
         mLastMenuItem = mNavigationView.getMenu().findItem(R.id.drawer_zhihu);
-        loadMultipleRootFragment(R.id.fl_main_content,0,mZhihuFragment,mWechatFragment,mGankFragment,mGoldFragment,mLikeFragment,mSettingFragment,mAboutFragment);
+        loadMultipleRootFragment(R.id.fl_main_content,0,mZhihuFragment,mWechatFragment,mGankFragment,mGoldFragment,mVtexFragment,mLikeFragment,mSettingFragment,mAboutFragment);
         mNavigationView.setNavigationItemSelectedListener(new NavigationView.OnNavigationItemSelectedListener() {
             @Override
             public boolean onNavigationItemSelected(MenuItem menuItem) {
@@ -138,6 +133,10 @@ public class MainActivity extends BaseActivity<MainPresenter> implements MainCon
                         showFragment = Constants.TYPE_GOLD;
                         mSearchMenuItem.setVisible(false);
                         break;
+                    case R.id.drawer_vtex:
+                        showFragment = Constants.TYPE_VTEX;
+                        mSearchMenuItem.setVisible(false);
+                        break;
                     case R.id.drawer_setting:
                         showFragment = Constants.TYPE_SETTING;
                         mSearchMenuItem.setVisible(false);
@@ -155,7 +154,7 @@ public class MainActivity extends BaseActivity<MainPresenter> implements MainCon
                     mLastMenuItem.setChecked(false);
                 }
                 mLastMenuItem = menuItem;
-                SharedPreferenceUtil.setCurrentItem(showFragment);
+                mPresenter.setCurrentItem(showFragment);
                 menuItem.setChecked(true);
                 mToolbar.setTitle(menuItem.getTitle());
                 mDrawerLayout.closeDrawers();
@@ -180,8 +179,8 @@ public class MainActivity extends BaseActivity<MainPresenter> implements MainCon
                 return false;
             }
         });
-        if (!SharedPreferenceUtil.getVersionPoint() && SystemUtil.isWifiConnected()) {
-            SharedPreferenceUtil.setVersionPoint(true);
+        if (!mPresenter.getVersionPoint() && SystemUtil.isWifiConnected()) {
+            mPresenter.setVersionPoint(true);
             try {
                 PackageManager pm = getPackageManager();
                 PackageInfo pi = pm.getPackageInfo(getPackageName(), PackageManager.GET_ACTIVITIES);
@@ -201,11 +200,6 @@ public class MainActivity extends BaseActivity<MainPresenter> implements MainCon
         mSearchView.setMenuItem(item);
         mSearchMenuItem = item;
         return true;
-    }
-
-    @Override
-    public void showError(String msg) {
-        SnackbarUtil.showShort(mToolbar,msg);
     }
 
     @Override
@@ -241,6 +235,8 @@ public class MainActivity extends BaseActivity<MainPresenter> implements MainCon
                 return mWechatFragment;
             case Constants.TYPE_GOLD:
                 return mGoldFragment;
+            case Constants.TYPE_VTEX:
+                return mVtexFragment;
             case Constants.TYPE_LIKE:
                 return mLikeFragment;
             case Constants.TYPE_SETTING:
@@ -261,6 +257,8 @@ public class MainActivity extends BaseActivity<MainPresenter> implements MainCon
                 return R.id.drawer_wechat;
             case Constants.TYPE_GOLD:
                 return R.id.drawer_gold;
+            case Constants.TYPE_VTEX:
+                return R.id.drawer_vtex;
             case Constants.TYPE_LIKE:
                 return R.id.drawer_like;
             case Constants.TYPE_SETTING:
@@ -280,38 +278,18 @@ public class MainActivity extends BaseActivity<MainPresenter> implements MainCon
         builder.setPositiveButton("马上更新", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialogInterface, int i) {
-                requestPermission();
+                checkPermissions();
             }
         });
         builder.show();
     }
 
-    @AfterPermissionGranted(RC_WRITE)
-    public void requestPermission() {
-        String[] perms = {Manifest.permission.WRITE_EXTERNAL_STORAGE};
-        if (EasyPermissions.hasPermissions(this, perms)) {
-            startService(new Intent(mContext, UpdateService.class));
-        } else {
-            EasyPermissions.requestPermissions(this, "下载应用需要文件写入权限哦~",
-                    RC_WRITE, perms);
-        }
+    @Override
+    public void startDownloadService() {
+        startService(new Intent(mContext, UpdateService.class));
     }
 
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        EasyPermissions.onRequestPermissionsResult(requestCode, permissions, grantResults, this);
-    }
-
-    @Override
-    public void onPermissionsGranted(int requestCode, List<String> perms) {
-        if (RC_WRITE == requestCode) {
-            startService(new Intent(mContext, UpdateService.class));
-        }
-    }
-
-    @Override
-    public void onPermissionsDenied(int requestCode, List<String> perms) {
-        ToastUtil.shortShow("取消更新 T T");
+    public void checkPermissions() {
+        mPresenter.checkPermissions(new RxPermissions(this));
     }
 }
